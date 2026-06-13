@@ -20,12 +20,10 @@ export const getOrCreateWalletService = async (userId) => {
   return walletResult.rows[0];
 };
 
-export const topUpWalletService = async (
-  userId,
-  amount,
-  paymentMethod
-) => {
-  if (!amount || amount <= 0) {
+export const topUpWalletService = async (userId, amount, paymentMethod) => {
+  const topUpAmount = Number(amount);
+
+  if (!topUpAmount || topUpAmount <= 0) {
     throw new Error("Nominal top up harus lebih dari 0");
   }
 
@@ -46,8 +44,6 @@ export const topUpWalletService = async (
       [userId]
     );
 
-    let wallet;
-
     if (walletResult.rows.length === 0) {
       walletResult = await client.query(
         `INSERT INTO wallets (user_id, balance)
@@ -57,10 +53,8 @@ export const topUpWalletService = async (
       );
     }
 
-    wallet = walletResult.rows[0];
-
-    const newBalance =
-      Number(wallet.balance) + Number(amount);
+    const wallet = walletResult.rows[0];
+    const newBalance = Number(wallet.balance) + topUpAmount;
 
     const updatedWallet = await client.query(
       `UPDATE wallets
@@ -71,7 +65,7 @@ export const topUpWalletService = async (
       [newBalance, wallet.id]
     );
 
-    await client.query(
+    const transactionResult = await client.query(
       `INSERT INTO wallet_transactions
        (
         wallet_id,
@@ -89,18 +83,22 @@ export const topUpWalletService = async (
         $3,
         'SUCCESS',
         $4
-       )`,
+       )
+       RETURNING *`,
       [
         wallet.id,
         paymentMethod,
-        amount,
+        topUpAmount,
         `Top up saldo melalui ${paymentMethod}`
       ]
     );
 
     await client.query("COMMIT");
 
-    return updatedWallet.rows[0];
+    return {
+      wallet: updatedWallet.rows[0],
+      transaction: transactionResult.rows[0]
+    };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

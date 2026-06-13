@@ -3,7 +3,6 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { pool } from "./config/db.js";
-import { generateOTP } from "./utils/otp.js";
 import { generateToken } from "./utils/jwt.js";
 import authRoutes from "./routes/auth.routes.js";
 import storeRoutes from "./routes/store.routes.js";
@@ -34,13 +33,7 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/api/test-otp", (req, res) => {
-  const otp = generateOTP();
 
-  res.json({
-    otp
-  });
-});
 
 app.get("/api/test-jwt", (req, res) => {
 

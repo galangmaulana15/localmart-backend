@@ -214,11 +214,6 @@ export const uploadProductImageService = async (
     );
   }
 
-  const fileExt = file.originalname
-    .split(".")
-    .pop()
-    .toLowerCase();
-
   const safeFileName = file.originalname
     .replace(/\s+/g, "-")
     .replace(/[^a-zA-Z0-9.-]/g, "")

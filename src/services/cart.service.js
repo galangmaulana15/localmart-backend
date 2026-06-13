@@ -1,15 +1,10 @@
 import { pool } from "../config/db.js";
 
-export const addToCartService = async (
-  userId,
-  productId,
-  quantity
-) => {
+export const addToCartService = async (userId, productId, quantity) => {
+  const qty = Number(quantity);
 
-  if (!productId || !quantity) {
-    throw new Error(
-      "Produk dan quantity wajib diisi"
-    );
+  if (!productId || !qty || qty < 1) {
+    throw new Error("Produk dan quantity wajib diisi dengan benar");
   }
 
   const productResult = await pool.query(
@@ -21,112 +16,83 @@ export const addToCartService = async (
   );
 
   if (productResult.rows.length === 0) {
-    throw new Error(
-      "Produk tidak ditemukan"
-    );
+    throw new Error("Produk tidak ditemukan");
   }
 
-  const product =
-    productResult.rows[0];
+  const product = productResult.rows[0];
 
-  if (quantity > product.stock) {
-    throw new Error(
-      "Stok tidak mencukupi"
-    );
+  if (qty > Number(product.stock)) {
+    throw new Error("Stok tidak mencukupi");
   }
 
-  let cartResult =
-    await pool.query(
-      `SELECT *
-       FROM carts
-       WHERE user_id = $1`,
-      [userId]
-    );
+  let cartResult = await pool.query(
+    `SELECT *
+     FROM carts
+     WHERE user_id = $1`,
+    [userId]
+  );
 
   let cartId;
 
-  if (
-    cartResult.rows.length === 0
-  ) {
-
-    const newCart =
-      await pool.query(
-        `INSERT INTO carts
-        (user_id)
-        VALUES ($1)
-        RETURNING *`,
-        [userId]
-      );
-
-    cartId =
-      newCart.rows[0].id;
-
-  } else {
-
-    cartId =
-      cartResult.rows[0].id;
-
-  }
-
-  const itemCheck =
-    await pool.query(
-      `SELECT *
-       FROM cart_items
-       WHERE cart_id = $1
-       AND product_id = $2`,
-      [
-        cartId,
-        productId
-      ]
+  if (cartResult.rows.length === 0) {
+    const newCart = await pool.query(
+      `INSERT INTO carts (user_id)
+       VALUES ($1)
+       RETURNING *`,
+      [userId]
     );
 
-  if (
-    itemCheck.rows.length > 0
-  ) {
+    cartId = newCart.rows[0].id;
+  } else {
+    cartId = cartResult.rows[0].id;
+  }
 
-    const updatedItem =
-      await pool.query(
-        `UPDATE cart_items
-         SET quantity =
-             quantity + $1,
-             updated_at =
-             CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`,
-        [
-          quantity,
-          itemCheck.rows[0].id
-        ]
-      );
+  const itemCheck = await pool.query(
+    `SELECT *
+     FROM cart_items
+     WHERE cart_id = $1
+     AND product_id = $2`,
+    [cartId, productId]
+  );
+
+  if (itemCheck.rows.length > 0) {
+    const oldQuantity = Number(itemCheck.rows[0].quantity);
+    const newQuantity = oldQuantity + qty;
+
+    if (newQuantity > Number(product.stock)) {
+      throw new Error("Stok tidak mencukupi");
+    }
+
+    const updatedItem = await pool.query(
+      `UPDATE cart_items
+       SET quantity = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [newQuantity, itemCheck.rows[0].id]
+    );
 
     return updatedItem.rows[0];
-
   }
 
-  const itemResult =
-    await pool.query(
-      `INSERT INTO cart_items
-      (
-        cart_id,
-        product_id,
-        quantity
-      )
-      VALUES
-      (
-        $1,
-        $2,
-        $3
-      )
-      RETURNING *`,
-      [
-        cartId,
-        productId,
-        quantity
-      ]
-    );
+  const itemResult = await pool.query(
+    `INSERT INTO cart_items
+    (
+      cart_id,
+      product_id,
+      quantity
+    )
+    VALUES
+    (
+      $1,
+      $2,
+      $3
+    )
+    RETURNING *`,
+    [cartId, productId, qty]
+  );
 
   return itemResult.rows[0];
-
 };
 
 export const getCartService = async (userId) => {
@@ -179,16 +145,11 @@ export const getCartService = async (userId) => {
   };
 };
 
-export const updateCartItemService = async (
-  userId,
-  cartItemId,
-  quantity
-) => {
+export const updateCartItemService = async (userId, cartItemId, quantity) => {
+  const qty = Number(quantity);
 
-  if (quantity < 1) {
-    throw new Error(
-      "Quantity minimal 1"
-    );
+  if (!qty || qty < 1) {
+    throw new Error("Quantity minimal 1");
   }
 
   const result = await pool.query(
@@ -196,60 +157,36 @@ export const updateCartItemService = async (
       ci.id,
       p.stock
      FROM cart_items ci
-     JOIN carts c
-       ON ci.cart_id = c.id
-     JOIN products p
-       ON ci.product_id = p.id
+     JOIN carts c ON ci.cart_id = c.id
+     JOIN products p ON ci.product_id = p.id
      WHERE ci.id = $1
      AND c.user_id = $2`,
-    [
-      cartItemId,
-      userId
-    ]
+    [cartItemId, userId]
   );
 
-  if (
-    result.rows.length === 0
-  ) {
-    throw new Error(
-      "Item cart tidak ditemukan"
-    );
+  if (result.rows.length === 0) {
+    throw new Error("Item cart tidak ditemukan");
   }
 
-  const item =
-    result.rows[0];
+  const item = result.rows[0];
 
-  if (
-    quantity > item.stock
-  ) {
-    throw new Error(
-      "Stok tidak mencukupi"
-    );
+  if (qty > Number(item.stock)) {
+    throw new Error("Stok tidak mencukupi");
   }
 
-  const updated =
-    await pool.query(
-      `UPDATE cart_items
-       SET quantity = $1,
-           updated_at =
-           CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [
-        quantity,
-        cartItemId
-      ]
-    );
+  const updated = await pool.query(
+    `UPDATE cart_items
+     SET quantity = $1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $2
+     RETURNING *`,
+    [qty, cartItemId]
+  );
 
   return updated.rows[0];
-
 };
 
-export const deleteCartItemService = async (
-  userId,
-  cartItemId
-) => {
-
+export const deleteCartItemService = async (userId, cartItemId) => {
   const result = await pool.query(
     `DELETE FROM cart_items ci
      USING carts c
@@ -257,20 +194,12 @@ export const deleteCartItemService = async (
      AND ci.id = $1
      AND c.user_id = $2
      RETURNING ci.*`,
-    [
-      cartItemId,
-      userId
-    ]
+    [cartItemId, userId]
   );
 
-  if (
-    result.rows.length === 0
-  ) {
-    throw new Error(
-      "Item cart tidak ditemukan"
-    );
+  if (result.rows.length === 0) {
+    throw new Error("Item cart tidak ditemukan");
   }
 
   return result.rows[0];
-
 };
