@@ -38,4 +38,10 @@ router.get(
   getSellerOrders
 );
 
+router.put(
+  "/:id/status",
+  authMiddleware,
+  updateOrderStatus
+);
+
 export default router;

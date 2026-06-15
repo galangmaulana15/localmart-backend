@@ -387,7 +387,9 @@ export const updateOrderStatusService = async (orderId, status) => {
     "PENDING",
     "PAID",
     "PROCESSING",
+    "PACKED",
     "SHIPPED",
+    "DELIVERED",
     "COMPLETED",
     "CANCELLED"
   ];
