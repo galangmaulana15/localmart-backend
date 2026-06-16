@@ -20,7 +20,7 @@ export const createReviewService = async (
      JOIN orders o ON oi.order_id = o.id
      WHERE o.user_id = $1
      AND oi.product_id = $2
-     AND o.order_status = 'PAID'
+     AND o.order_status IN ('PAID', 'DELIVERED', 'COMPLETED')
      LIMIT 1`,
     [userId, productId]
   );
@@ -43,6 +43,28 @@ export const createReviewService = async (
   );
 
   return result.rows[0];
+};
+
+export const getSellerReviewsService = async (sellerId) => {
+  const result = await pool.query(
+    `SELECT
+      r.id,
+      r.product_id,
+      p.product_name,
+      r.rating,
+      r.comment,
+      r.created_at,
+      u.full_name AS customer_name
+     FROM reviews r
+     JOIN products p ON r.product_id = p.id
+     JOIN stores s ON p.store_id = s.id
+     JOIN users u ON r.user_id = u.id
+     WHERE s.seller_id = $1
+     ORDER BY r.created_at DESC`,
+    [sellerId]
+  );
+
+  return result.rows;
 };
 
 export const getProductReviewsService = async (productId) => {

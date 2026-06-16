@@ -236,6 +236,8 @@ export const getOrderByIdService = async (userId, orderId) => {
       oi.id,
       oi.product_id,
       p.product_name,
+      oi.store_id,
+      s.seller_id,
       oi.quantity,
       oi.price,
       oi.subtotal,
@@ -248,6 +250,7 @@ export const getOrderByIdService = async (userId, orderId) => {
       ) AS image_url
      FROM order_items oi
      JOIN products p ON oi.product_id = p.id
+     JOIN stores s ON oi.store_id = s.id
      WHERE oi.order_id = $1
      ORDER BY oi.id ASC`,
     [orderId]
@@ -362,26 +365,6 @@ export const payOrderWithWalletService = async (userId, orderId) => {
   }
 };
 
-export const getAllOrdersAdminService = async () => {
-  const result = await pool.query(
-    `SELECT
-      o.id,
-      o.order_code,
-      o.total_amount,
-      o.payment_method,
-      o.order_status,
-      o.shipping_address,
-      o.created_at,
-      u.full_name,
-      u.email
-     FROM orders o
-     JOIN users u ON o.user_id = u.id
-     ORDER BY o.created_at DESC`
-  );
-
-  return result.rows;
-};
-
 export const updateOrderStatusService = async (orderId, status) => {
   const allowedStatus = [
     "PENDING",
@@ -398,6 +381,35 @@ export const updateOrderStatusService = async (orderId, status) => {
     throw new Error("Status order tidak valid");
   }
 
+  const currentOrder = await pool.query(
+    `SELECT order_status FROM orders WHERE id = $1`,
+    [orderId]
+  );
+
+  if (currentOrder.rows.length === 0) {
+    throw new Error("Order tidak ditemukan");
+  }
+
+  const currentStatus = currentOrder.rows[0].order_status;
+
+  if (currentStatus === status) {
+    return currentOrder.rows[0];
+  }
+
+  const allowedTransitions = {
+    "PENDING": ["PAID", "CANCELLED"],
+    "PAID": ["PROCESSING"],
+    "PROCESSING": ["PACKED"],
+    "PACKED": ["SHIPPED"],
+    "SHIPPED": ["DELIVERED"],
+    "DELIVERED": ["COMPLETED"],
+  };
+
+  const allowed = allowedTransitions[currentStatus];
+  if (!allowed || !allowed.includes(status)) {
+    throw new Error(`Status tidak bisa diubah dari ${currentStatus} ke ${status}`);
+  }
+
   const result = await pool.query(
     `UPDATE orders
      SET order_status = $1,
@@ -406,10 +418,6 @@ export const updateOrderStatusService = async (orderId, status) => {
      RETURNING *`,
     [status, orderId]
   );
-
-  if (result.rows.length === 0) {
-    throw new Error("Order tidak ditemukan");
-  }
 
   return result.rows[0];
 };

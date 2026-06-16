@@ -1,6 +1,7 @@
 import {
   createReviewService,
-  getProductReviewsService
+  getProductReviewsService,
+  getSellerReviewsService
 } from "../services/review.service.js";
 
 export const createReview = async (req, res) => {
@@ -21,6 +22,22 @@ export const createReview = async (req, res) => {
     });
   } catch (error) {
     res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const getSellerReviews = async (req, res) => {
+  try {
+    const reviews = await getSellerReviewsService(req.user.id);
+
+    res.status(200).json({
+      success: true,
+      data: reviews
+    });
+  } catch (error) {
+    res.status(500).json({
       success: false,
       message: error.message
     });
