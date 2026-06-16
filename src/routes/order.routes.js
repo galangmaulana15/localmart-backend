@@ -14,8 +14,6 @@ const router = express.Router();
 
 router.post("/checkout", authMiddleware, checkout);
 router.get("/", authMiddleware, getMyOrders);
-router.get("/:id", authMiddleware, getOrderById);
-router.post("/:id/pay-wallet", authMiddleware, payOrderWithWallet);
 
 router.get(
   "/seller/my-orders",
@@ -23,6 +21,9 @@ router.get(
   roleMiddleware(2),
   getSellerOrders
 );
+
+router.get("/:id", authMiddleware, getOrderById);
+router.post("/:id/pay-wallet", authMiddleware, payOrderWithWallet);
 
 router.put(
   "/:id/status",

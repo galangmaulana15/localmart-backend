@@ -1,10 +1,12 @@
 import { pool } from "../config/db.js";
+import { ensureOrderPaymentStatusColumn } from "./orderSchema.service.js";
 
 export const checkoutService = async (
   userId,
   paymentMethod,
   shippingAddress
 ) => {
+  await ensureOrderPaymentStatusColumn();
 
   const client = await pool.connect();
 
@@ -89,6 +91,7 @@ export const checkoutService = async (
           order_code,
           total_amount,
           payment_method,
+          payment_status,
           order_status,
           shipping_address
         )
@@ -98,6 +101,7 @@ export const checkoutService = async (
           $2,
           $3,
           $4,
+          'PENDING',
           'PENDING',
           $5
         )
@@ -193,12 +197,15 @@ export const checkoutService = async (
 };
 
 export const getMyOrdersService = async (userId) => {
+  await ensureOrderPaymentStatusColumn();
+
   const result = await pool.query(
     `SELECT
       id,
       order_code,
       total_amount,
       payment_method,
+      payment_status,
       order_status,
       shipping_address,
       created_at
@@ -212,12 +219,15 @@ export const getMyOrdersService = async (userId) => {
 };
 
 export const getOrderByIdService = async (userId, orderId) => {
+  await ensureOrderPaymentStatusColumn();
+
   const orderResult = await pool.query(
     `SELECT
       id,
       order_code,
       total_amount,
       payment_method,
+      payment_status,
       order_status,
       shipping_address,
       created_at
@@ -263,6 +273,8 @@ export const getOrderByIdService = async (userId, orderId) => {
 };
 
 export const payOrderWithWalletService = async (userId, orderId) => {
+  await ensureOrderPaymentStatusColumn();
+
   const client = await pool.connect();
 
   try {
@@ -345,6 +357,7 @@ export const payOrderWithWalletService = async (userId, orderId) => {
     const updatedOrder = await client.query(
       `UPDATE orders
        SET order_status = 'PAID',
+           payment_status = 'PAID',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING *`,
@@ -366,6 +379,8 @@ export const payOrderWithWalletService = async (userId, orderId) => {
 };
 
 export const updateOrderStatusService = async (orderId, status) => {
+  await ensureOrderPaymentStatusColumn();
+
   const allowedStatus = [
     "PENDING",
     "PAID",
@@ -413,6 +428,11 @@ export const updateOrderStatusService = async (orderId, status) => {
   const result = await pool.query(
     `UPDATE orders
      SET order_status = $1,
+         payment_status = CASE
+           WHEN $1 = 'CANCELLED' THEN 'CANCELLED'
+           WHEN $1 = 'PAID' THEN 'PAID'
+           ELSE COALESCE(payment_status, 'PENDING')
+         END,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $2
      RETURNING *`,
@@ -423,12 +443,15 @@ export const updateOrderStatusService = async (orderId, status) => {
 };
 
 export const getSellerOrdersService = async (sellerId) => {
+  await ensureOrderPaymentStatusColumn();
+
   const result = await pool.query(
     `SELECT DISTINCT
       o.id,
       o.order_code,
       o.total_amount,
       o.payment_method,
+      o.payment_status,
       o.order_status,
       o.shipping_address,
       o.created_at

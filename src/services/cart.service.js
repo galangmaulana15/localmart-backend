@@ -118,6 +118,7 @@ export const getCartService = async (userId) => {
       ci.product_id,
       p.product_name,
       p.price,
+      p.stock,
       ci.quantity,
       (p.price * ci.quantity) AS subtotal,
       (
