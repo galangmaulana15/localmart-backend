@@ -1,7 +1,7 @@
 import { pool } from "../config/db.js";
 import { ensureOrderPaymentStatusColumn } from "./orderSchema.service.js";
 import { getOrCreateWalletService } from "./wallet.service.js";
-import { createXenditInvoice } from "./xendit.service.js";
+import { createXenditInvoice, getXenditInvoiceStatus } from "./xendit.service.js";
 
 const toCustomerNameParts = (customer = {}) => {
   const fullName = String(customer.full_name || customer.name || customer.email || "Customer LocalMart").trim();
@@ -522,6 +522,55 @@ export const payOrderWithXenditService = async (userId, orderId) => {
     invoice_url: invoice.invoice_url,
     external_id: invoice.external_id,
   };
+};
+
+export const verifyXenditPaymentService = async (orderCode) => {
+  await ensureOrderPaymentStatusColumn();
+
+  const orderResult = await pool.query(
+    `SELECT id, order_code, order_status, payment_method, payment_status
+     FROM orders
+     WHERE order_code = $1`,
+    [orderCode]
+  );
+
+  if (orderResult.rows.length === 0) {
+    throw new Error("Order tidak ditemukan");
+  }
+
+  const order = orderResult.rows[0];
+  if (order.order_status === "PAID") {
+    return { order, message: "Order sudah PAID" };
+  }
+
+  const invoice = await getXenditInvoiceStatus(orderCode);
+  if (!invoice) {
+    throw new Error("Invoice Xendit tidak ditemukan untuk order ini");
+  }
+
+  const invoiceStatus = String(invoice.status || "").toLowerCase();
+  const isPaid = invoiceStatus.includes("paid") || invoiceStatus.includes("settled");
+
+  if (!isPaid) {
+    return { order, message: `Status invoice Xendit: ${invoice.status || invoiceStatus}` };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await markOrderPaidAndCreditSeller(
+      client,
+      orderCode,
+      invoice.payment_channel || invoice.ewallet_type || order.payment_method || "Xendit"
+    );
+    await client.query("COMMIT");
+    return { order: { ...order, order_status: "PAID", payment_status: "PAID" }, paid: true, message: "Pembayaran berhasil diverifikasi" };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 export const handleXenditWebhookService = async (payload = {}) => {

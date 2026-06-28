@@ -2,6 +2,7 @@ import {
   createXenditCheckoutService,
   handleXenditWebhookService,
   payOrderWithXenditService,
+  verifyXenditPaymentService,
 } from "../services/payment.service.js";
 import { isXenditWebhookAuthorized } from "../services/xendit.service.js";
 
@@ -35,6 +36,24 @@ export const payOrderWithXendit = async (req, res) => {
   } catch (error) {
     const statusCode = String(error.message || "").includes("XENDIT_SECRET_KEY") ? 503 : 400;
     res.status(statusCode).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const verifyXenditPayment = async (req, res) => {
+  try {
+    const { orderCode } = req.params;
+    const result = await verifyXenditPaymentService(orderCode);
+
+    res.status(200).json({
+      success: true,
+      message: result.message || "Verifikasi pembayaran berhasil",
+      data: result,
+    });
+  } catch (error) {
+    res.status(400).json({
       success: false,
       message: error.message,
     });

@@ -104,3 +104,71 @@ export const isXenditWebhookAuthorized = (req) => {
   const receivedToken = req.headers["x-callback-token"];
   return String(receivedToken || "") === String(expectedToken);
 };
+
+const xenditRequest = (method, path, body = null, rejectUnauthorized = true) => new Promise((resolve, reject) => {
+  const url = new URL(`${XENDIT_API_BASE_URL}${path}`);
+  const payload = body ? JSON.stringify(body) : null;
+
+  const request = https.request(
+    {
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      method,
+      headers: {
+        Authorization: getAuthHeader(),
+        "Content-Type": "application/json",
+        ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+      },
+      agent: new https.Agent({ rejectUnauthorized }),
+    },
+    (response) => {
+      let data = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { data += chunk; });
+      response.on("end", () => {
+        let parsed = {};
+        try { parsed = data ? JSON.parse(data) : {}; } catch { parsed = { raw: data }; }
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          resolve(parsed);
+        } else {
+          reject(new Error(parsed?.message || parsed?.error_message || `Xendit request gagal (${response.statusCode})`));
+        }
+      });
+    }
+  );
+
+  request.setTimeout(15000, () => request.destroy(new Error("Koneksi ke Xendit timeout")));
+  request.on("error", reject);
+  if (payload) request.write(payload);
+  request.end();
+});
+
+const xenditRequestWithFallback = async (method, path, body = null) => {
+  try {
+    return await xenditRequest(method, path, body, true);
+  } catch (error) {
+    const certRelated = String(error.message || "").toLowerCase().includes("certificate")
+      || String(error.message || "").toLowerCase().includes("tls")
+      || String(error.message || "").toLowerCase().includes("self signed");
+
+    if (certRelated && ALLOW_INSECURE_TLS) {
+      return await xenditRequest(method, path, body, false);
+    }
+
+    throw new Error(`Koneksi ke Xendit gagal: ${error.message}`);
+  }
+};
+
+const extractArrayResponse = (data) => {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.data)) return data.data;
+  return [];
+};
+
+export const getXenditInvoiceStatus = async (externalId) => {
+  const response = await xenditRequestWithFallback("GET", `/v2/invoices?external_id=${encodeURIComponent(externalId)}`);
+  const invoices = extractArrayResponse(response);
+  return invoices.length > 0 ? invoices[0] : null;
+};
