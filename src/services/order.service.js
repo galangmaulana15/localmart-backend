@@ -396,9 +396,11 @@ export const updateOrderStatusService = async (orderId, status) => {
     throw new Error("Status order tidak valid");
   }
 
+  const orderIdNum = Number(orderId)
+
   const currentOrder = await pool.query(
     `SELECT order_status FROM orders WHERE id = $1`,
-    [orderId]
+    [orderIdNum]
   );
 
   if (currentOrder.rows.length === 0) {
@@ -425,19 +427,27 @@ export const updateOrderStatusService = async (orderId, status) => {
     throw new Error(`Status tidak bisa diubah dari ${currentStatus} ke ${status}`);
   }
 
-  const result = await pool.query(
-    `UPDATE orders
-     SET order_status = $1,
-         payment_status = CASE
-           WHEN $1 = 'CANCELLED' THEN 'CANCELLED'
-           WHEN $1 = 'PAID' THEN 'PAID'
-           ELSE COALESCE(payment_status, 'PENDING')
-         END,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2
-     RETURNING *`,
-    [status, orderId]
-  );
+  let result
+  if (status === 'CANCELLED' || status === 'PAID') {
+    result = await pool.query(
+      `UPDATE orders
+       SET order_status = $1,
+           payment_status = $2,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`,
+      [status, status, orderIdNum]
+    )
+  } else {
+    result = await pool.query(
+      `UPDATE orders
+       SET order_status = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [status, orderIdNum]
+    )
+  }
 
   return result.rows[0];
 };
